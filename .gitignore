@@ -24,3 +24,8 @@ venv/
 .venv/
 __pycache__/
 .~lock.*
+.idea/
+venv/
+.venv/
+.~lock.*
+.~lock.*
