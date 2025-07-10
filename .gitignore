@@ -29,3 +29,4 @@ venv/
 .venv/
 .~lock.*
 .~lock.*
+app.log
