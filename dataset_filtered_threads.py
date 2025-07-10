@@ -23,7 +23,11 @@ csv.field_size_limit(sys.maxsize)
 
 # Constants for dataset files
 EMAILS_SUBSET_CSV = str(Path(os.environ["DISSERTATION_DATA"]) / "emails.csv")
-OUTPUT_CSV = "emails_all_document_parsed.csv"
+OUTPUT_CSV = "emails_filtered_threads.csv"
+
+# Keywords for filtering subjects
+KEYWORDS = ['report', 'project', 'manager', 'status', 'update', 'approval']
+MIN_MESSAGES = 3
 
 
 def readdataset(path: str) -> pd.DataFrame:
@@ -105,11 +109,34 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def filter_threads_by_length_and_keywords(df: pd.DataFrame,
+                                         min_messages: int = MIN_MESSAGES,
+                                         keywords: list = KEYWORDS) -> pd.DataFrame:
+    """
+    Filter DataFrame to include only threads (grouped by 'Subject') that:
+      - Have at least `min_messages` emails
+      - Contain any of the `keywords` in the subject (case-insensitive)
+
+    Returns the filtered DataFrame (rows belonging to matching threads).
+    """
+    # Group by subject and filter by thread length
+    filtered = df.groupby('Subject').filter(
+        lambda g: len(g) >= min_messages
+    )
+    # Further filter by keywords in subject
+    if keywords:
+        pattern = '|'.join(keywords)
+        mask = filtered['Subject'].str.contains(pattern, case=False, na=False)
+        filtered = filtered[mask]
+    logging.info(f"Filtered to {len(filtered)} emails across qualified threads")
+    return filtered
+
+
 def main():
     # Load full dataset
     df = readdataset(EMAILS_SUBSET_CSV)
 
-    # Parse into new columns
+    # Parse into structured columns
     parsed_df = df.apply(parse_email, axis=1)
     logging.info("Parsed emails into file, X-Folder, Headers, Subject, Body")
 
@@ -117,23 +144,14 @@ def main():
     cleaned_df = clean_dataframe(parsed_df)
     logging.info("Cleaned Body field; retained other columns")
 
-        # Filter to 'all_documents' based on the 'file' column
-    file_mask = cleaned_df['file'].str.contains(r'all_documents', case=False, na=False)
-    folder_df = cleaned_df[file_mask]
-    logging.info(f"Filtered to {len(folder_df)} emails with 'all_documents' in file path")
-
-    # Exclude blank subjects
-    folder_df = folder_df[folder_df['Subject'] != '']
-    # Keep subjects with >3 mails
-    counts = folder_df['Subject'].value_counts()
-    keep = counts[counts > 3].index
-    final_df = folder_df[folder_df['Subject'].isin(keep)]
-    logging.info(f"Retained {len(final_df)} records after subject filtering")
+    # Filter for multi-message threads with subject keywords
+    final_df = filter_threads_by_length_and_keywords(cleaned_df)
 
     # Save output
     final_df.to_csv(OUTPUT_CSV, index=False, encoding='utf-8')
-    logging.info(f"Saved final data to {OUTPUT_CSV}")
+    logging.info(f"Saved filtered threads to {OUTPUT_CSV}")
     print(f"Done. Output saved to {OUTPUT_CSV}")
+
 
 if __name__ == '__main__':
     main()
